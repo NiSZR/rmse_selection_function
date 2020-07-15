@@ -1,0 +1,178 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!! rmse_selection_function_EXAMPLE.CLASS                  !!!
+!!!                          ***                           !!!
+!!!                                                        !!!
+!!! REMOVES SCANS FROM INDEX BASED ON EXCESS RMSE;         !!!
+!!! OPTIMISES COMBINED INTEGRATION TIME                    !!!
+!!!                          ***                           !!!
+!!!                                                        !!!
+!!! INPUT (REQUIRED)                                       !!!
+!!!   a_window_min  !INT[10]  lower mask frequency[MHz]    !!!
+!!!   a_window_max  !INT[10]  upper mask frequency[MHz]    !!!
+!!!                                                        !!!
+!!! OUTPUT                                                 !!!
+!!!   new index without "bad" scans                        !!!
+!!!                                                        !!!
+!!! USAGE                                                  !!!
+!!!   1) build index (find)                                !!!
+!!!   2) @rmse_selection_function_EXAMPLE.class            !!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+! Parameter definition
+!---------------------------------------!
+def real a_rmse[found]
+def real a_tint[found]
+def real a_rmse_sorted[found]
+def real a_rmse_rank[found]
+def real a_R[found]
+def real sum_
+def real sum_tint
+def real rmse_cutt
+def char window_list*64
+def int counter_drop
+def int xi_
+def int xi_cutt
+def int i_rank
+def int a_window_min[10]
+def int a_window_max[10]
+def int k_window
+def int binning
+let binning 64!&1              ! Input !
+let xi_cutt found
+let window_list ""
+let a_window_min 220950 -   ! define line windows !
+                176700 -
+                88200 -
+                132500 -
+                109060 -
+                145400 -
+                155300 -
+                0 -
+                0 -
+                0
+let a_window_max 221550 -
+                177300 -
+                88800 -
+                133100 -
+                109640 -
+                146000 -
+                155900 -
+                0 -
+                0 -
+                0
+let rmse_cutt -1
+
+say ""
+say "+------------------------------------------------+"
+say "| RMSE SELECTION FUNCTION                        |"
+say "|               Developed by N. Sulzenauer, 2019 |"
+say "+------------------------------------------------+"
+say " (IAC internal Project: Molecular Gas And Dust In "
+say "                        Galaxies, PI. Dannerbauer)" 
+say ""
+
+SIC message global s-i ON   ! Turn off messages !
+SIC message global s-r ON
+SIC message global s-w ON
+SIC message global s-e ON
+!SIC mkdir "setups_rmse"  ! make directory for output !
+
+set mode x tot
+set mode y -0.01 0.01
+
+! (1) Baselining, windowing and rmse
+!---------------------------------------!
+get first
+for i 1 to 7
+    let a_window_min[i] 'a_window_min[i]-r%head%spe%restf'
+    let a_window_max[i] 'a_window_max[i]-r%head%spe%restf'
+    let window_list 'window_list'" "'a_window_min[i]'" "'a_window_max[i]'
+next i
+
+!set window '88000-r%head%spe%restf' '89000-r%head%spe%restf'
+set window 'a_window_min[1]' 'a_window_max[1]' 'a_window_min[2]' 'a_window_max[2]' 
+'a_window_min[3]' 'a_window_max[3]' 'a_window_min[4]' 'a_window_max[4]' 
+'a_window_min[5]' 'a_window_max[5]' 'a_window_min[6]' 'a_window_max[6]' '
+a_window_min[7]' 'a_window_max[7]'
+!let k_window 3; set window 'a_window_min[k_window]' 'a_window_max[k_window]'
+get zero
+for i 1 to found
+    get next
+    base 0                                  ! Update header info !
+    let a_rmse[i] 'r%head%bas%sigfi'        ! Get header info !
+    let a_tint[i] 'r%head%gen%time'
+next i
+
+! (2) Sort rmse-array
+!---------------------------------------!
+SIC\compute a_rmse_rank rankorder a_rmse    ! get rank-position of rmse !
+for i 1 to found
+    let a_rmse_sorted[i] a_rmse[i]  
+next i
+sort a_rmse_sorted
+
+! (3) Calculate estimator a_R(xi)
+!---------------------------------------!
+for xi 1 to found
+    let sum_ 0
+    let sum_tint 0
+    
+    for j 1 to xi
+            let sum_ 'sum_+(a_rmse_sorted[j])**2'
+            let sum_tint 'sum_tint+a_tint[j]'
+    next j
+    let a_R[xi] 'sqrt(sum_)/(sum_tint)'
+    !say 'a_R[xi]'  ! show noise component
+next xi
+
+! (4) Find minimum R(xi)
+!---------------------------------------!
+for xi 2 to found
+    let xi_ 'xi-1'
+    
+    if (a_R[xi].gt.a_R[xi_]) then
+        let xi_cutt xi-1
+        break
+    endif
+next xi
+let rmse_cutt a_rmse_sorted[xi_cutt]
+
+! (5) Drop bad slices
+!---------------------------------------!
+get zero
+for i 1 to found
+    get next
+    !say "        "'i'"        [ ]"    
+    
+    if a_rmse[i].gt.rmse_cutt then
+        let counter_drop 'counter_drop+1'
+        drop
+        !say "        "'i'"        [X]" 
+    endif
+next i
+
+! OPTIONAL <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+!
+! (6) Output *clean* index/ visualisation
+!---------------------------------------!
+! 
+
+!stitch
+!smooth box 'binning'
+!set mode x tot
+!plot
+!draw window
+
+!>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+! Turn on messages
+SIC message global s+i OFF;
+SIC message global s+r OFF;
+SIC message global s+w OFF;
+SIC message global s+e OFF
+
+say ""
+say "+------------------------------------------------+"
+say "| ... Done! Removed "'counter_drop'" bad scans.                 |"
+say "+------------------------------------------------+"
+say ""
